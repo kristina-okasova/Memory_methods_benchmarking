@@ -19,6 +19,7 @@ model:
   # Endpoint for the SGLang (or vLLM) server
   base_url: http://localhost:8000/v1
   api_key: "123-abc"          # matches SGLang default; override via REMEMR1_API_KEY env var
+  # served_model_name: ReMemR1-7B   # set if auto-discovery fails (must match --served-model-name)
 
   # ---- ReMemR1 inference parameters (match training defaults) ----
   chunk_size: 5000             # tokens per memory-update step

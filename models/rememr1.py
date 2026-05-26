@@ -166,7 +166,14 @@ class ReMemR1Adapter:
         base_url = config.get("base_url", "http://localhost:8000/v1")
         api_key = config.get("api_key") or os.environ.get("REMEMR1_API_KEY", "123-abc")
         self._client = self._build_client(base_url, api_key)
-        log.info("ReMemR1 adapter ready — endpoint: %s", base_url)
+
+        # Resolve the actual model name served by the endpoint.
+        # Explicit config wins; otherwise query /v1/models and use the first result.
+        if "served_model_name" in config:
+            self._model = config["served_model_name"]
+        else:
+            self._model = self._discover_model_name(self._client, fallback=model_path)
+        log.info("ReMemR1 adapter ready — endpoint: %s, model: %s", base_url, self._model)
 
     def predict(self, context: str, question: str) -> str:
         """Recurrent memory-update loop with TF-IDF recall, then boxed answer."""
@@ -227,10 +234,9 @@ class ReMemR1Adapter:
         max_tokens = self._cfg.get("max_new_tokens", 1024)
         temperature = self._cfg.get("temperature", 0.7)
         top_p = self._cfg.get("top_p", 0.95)
-        model = self._cfg.get("model_name_or_path", "yrshi/ReMemR1-7B")
         try:
             resp = self._client.chat.completions.create(
-                model=model,
+                model=self._model,
                 messages=[{"role": "user", "content": user_content}],
                 max_tokens=max_tokens,
                 temperature=temperature,
@@ -240,6 +246,19 @@ class ReMemR1Adapter:
         except Exception as e:
             log.error("ReMemR1 LLM call failed: %s", e)
             return None
+
+    @staticmethod
+    def _discover_model_name(client, fallback: str) -> str:
+        """Query /v1/models and return the first served model id."""
+        try:
+            models = client.models.list()
+            if models.data:
+                name = models.data[0].id
+                log.info("Auto-discovered served model name: %s", name)
+                return name
+        except Exception as e:
+            log.warning("Could not auto-discover model name (%s); using %s", e, fallback)
+        return fallback
 
     @staticmethod
     def _load_tokenizer(model_name_or_path: str):
