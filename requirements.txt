@@ -1,0 +1,6 @@
+# Benchmark harness dependencies
+# GPU server: vllm>=0.4  (install separately; version depends on CUDA)
+datasets>=2.19
+transformers>=4.40
+openai>=1.0
+pyyaml>=6.0

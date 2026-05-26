@@ -1,0 +1,38 @@
+# MemAgent × HotpotQA benchmark config
+#
+# Before running, start a vLLM server (or set mode: local):
+#   vllm serve BytedTsinghua-SIA/RL-MemoryAgent-7B --port 8000 --max-model-len 8192
+#
+# Then run:
+#   python benchmark.py --config configs/memagent_hotpotqa.yaml
+#   python benchmark.py --config configs/memagent_hotpotqa.yaml --limit 100   # quick test
+
+model:
+  adapter: memagent
+  mode: remote          # "local" to have the harness start vLLM itself
+
+  # HuggingFace model id or local checkpoint path
+  model_name_or_path: BytedTsinghua-SIA/RL-MemoryAgent-7B
+  # model_name_or_path: BytedTsinghua-SIA/RL-MemoryAgent-14B
+
+  # Endpoint for the vLLM server (remote mode, or auto-used after local start)
+  base_url: http://localhost:8000/v1
+  api_key: "123-abc"          # matches vLLM default; override via MEMAGENT_API_KEY env var
+
+  # ---- local mode only (ignored when mode: remote) ----
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.90
+  max_model_len: 8192          # raise to 32768 for 14B or longer contexts
+
+  # ---- MemAgent inference parameters (match training defaults) ----
+  chunk_size: 5000             # tokens per memory-update step
+  max_context_len: 120000      # center-crop contexts longer than this (tokens)
+  max_new_tokens: 1024         # max tokens for each LLM call (memory update + final answer)
+  temperature: 0.0             # greedy for reproducible eval (training used 0.7)
+  top_p: 1.0
+
+dataset:
+  adapter: hotpotqa
+  hf_config: distractor        # "distractor" (10 docs) — what MemAgent trained on
+  split: validation            # 7405 examples
+  # limit: 100                 # uncomment to cap for a quick smoke-test
