@@ -1,0 +1,25 @@
+# MemAgent × RULER (synthetic long-context benchmark)
+# python benchmark.py --config configs/memagent_ruler.yaml
+
+model:
+  adapter: memagent
+  mode: remote
+  model_name_or_path: BytedTsinghua-SIA/RL-MemoryAgent-7B
+  base_url: http://localhost:8000/v1
+  api_key: "123-abc"
+  chunk_size: 5000
+  max_context_len: 120000
+  max_new_tokens: 1024
+  temperature: 0.0
+  top_p: 1.0
+
+dataset:
+  adapter: ruler
+  context_length: 4096         # 4096 | 8192 | 16384
+  split: test                  # only available split
+  # tasks:                     # null = all tasks; or list a subset:
+  #   - niah_single_1
+  #   - niah_multikey_1
+  #   - vt
+  #   - qa_1
+  # limit: 100

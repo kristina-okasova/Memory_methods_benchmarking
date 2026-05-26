@@ -1,0 +1,19 @@
+# MemAgent × QASPER (information-seeking QA over NLP papers)
+# python benchmark.py --config configs/memagent_qasper.yaml
+
+model:
+  adapter: memagent
+  mode: remote
+  model_name_or_path: BytedTsinghua-SIA/RL-MemoryAgent-7B
+  base_url: http://localhost:8000/v1
+  api_key: "123-abc"
+  chunk_size: 5000
+  max_context_len: 120000
+  max_new_tokens: 1024
+  temperature: 0.0
+  top_p: 1.0
+
+dataset:
+  adapter: qasper
+  split: validation            # ~281 papers → ~1000 QA pairs after exploding
+  # limit: 50                  # caps number of papers (not QA pairs)
