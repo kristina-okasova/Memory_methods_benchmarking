@@ -17,19 +17,14 @@ Config keys (under cfg["dataset"]):
 """
 
 import logging
-import sys
-from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from benchmark import DatasetAdapter  # noqa: E402
 
 log = logging.getLogger(__name__)
 
 _DOCUMENT_PROMPT = "Document {i}:\n{document}"
 
 
-class HotpotQAAdapter(DatasetAdapter):
+class HotpotQAAdapter:
     """DatasetAdapter for hotpotqa/hotpot_qa (HuggingFace)."""
 
     def __init__(self):
@@ -59,20 +54,15 @@ class HotpotQAAdapter(DatasetAdapter):
     def __len__(self) -> int:
         return len(self._examples)
 
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _format(ex: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert a raw HotpotQA example into the harness dict format."""
         titles: List[str] = ex["context"]["title"]
         sentences: List[List[str]] = ex["context"]["sentences"]
 
-        # Build per-document text: "Title\nSentence1Sentence2..."
         docs = [
             f"{title}\n{''.join(sents)}"
             for title, sents in zip(titles, sentences)
         ]
-        # Format like MemAgent's dataset_process.py
         context = "\n\n".join(
             _DOCUMENT_PROMPT.format(i=i + 1, document=doc)
             for i, doc in enumerate(docs)
@@ -81,6 +71,6 @@ class HotpotQAAdapter(DatasetAdapter):
         return {
             "id":       ex["id"],
             "question": ex["question"],
-            "answer":   ex["answer"],   # single string in HotpotQA
+            "answer":   ex["answer"],
             "context":  context,
         }

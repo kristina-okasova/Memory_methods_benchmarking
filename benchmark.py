@@ -126,16 +126,24 @@ class Result:
 # ---------------------------------------------------------------------------
 
 def _load_adapter(base_package: str, name: str):
-    """Import <base_package>.<name> and return the single exported class."""
+    """Import <base_package>.<name> and return the single exported adapter class.
+
+    Discovery uses duck-typing so adapter modules don't need to import from
+    benchmark.py (which would break under __main__ vs module name mismatch).
+    A ModelAdapter must have load() + predict(); a DatasetAdapter must have
+    load() + __iter__() + __len__(). Abstract classes are excluded.
+    """
+    import inspect
     module = importlib.import_module(f"{base_package}.{name}")
-    # Convention: the adapter class is the only public class in the module
     for attr in dir(module):
+        if attr.startswith("_"):
+            continue
         obj = getattr(module, attr)
-        if (
-            isinstance(obj, type)
-            and issubclass(obj, (ModelAdapter, DatasetAdapter))
-            and obj not in (ModelAdapter, DatasetAdapter)
-        ):
+        if not isinstance(obj, type) or inspect.isabstract(obj):
+            continue
+        is_model   = callable(getattr(obj, "load", None)) and callable(getattr(obj, "predict", None))
+        is_dataset = callable(getattr(obj, "load", None)) and callable(getattr(obj, "__iter__", None)) and callable(getattr(obj, "__len__", None))
+        if is_model or is_dataset:
             return obj
     raise ImportError(f"No adapter class found in {base_package}.{name}")
 

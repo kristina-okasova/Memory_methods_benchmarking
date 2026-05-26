@@ -26,13 +26,8 @@ Config keys (all under cfg["model"]):
 import logging
 import os
 import subprocess
-import sys
 import time
-from pathlib import Path
 from typing import Any, Dict, Optional
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from benchmark import ModelAdapter  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +85,7 @@ def _extract_boxed(text: str) -> Optional[str]:
     return None
 
 
-class MemAgentAdapter(ModelAdapter):
+class MemAgentAdapter:
     """ModelAdapter wrapping MemAgent served by vLLM via OpenAI-compatible API."""
 
     def __init__(self):
