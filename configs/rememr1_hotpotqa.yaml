@@ -1,0 +1,34 @@
+# ReMemR1 × HotpotQA benchmark config
+#
+# Before running, start a SGLang server:
+#   python -m sglang.launch_server \
+#       --model-path yrshi/ReMemR1-7B \
+#       --served-model-name yrshi/ReMemR1-7B \
+#       --port 8000
+#
+# Then run:
+#   python benchmark.py --config configs/rememr1_hotpotqa.yaml
+#   python benchmark.py --config configs/rememr1_hotpotqa.yaml --limit 100   # quick test
+
+model:
+  adapter: rememr1
+
+  # HuggingFace model id or local checkpoint path (also used as the API model name)
+  model_name_or_path: yrshi/ReMemR1-7B
+
+  # Endpoint for the SGLang (or vLLM) server
+  base_url: http://localhost:8000/v1
+  api_key: "123-abc"          # matches SGLang default; override via REMEMR1_API_KEY env var
+
+  # ---- ReMemR1 inference parameters (match training defaults) ----
+  chunk_size: 5000             # tokens per memory-update step
+  max_context_len: 120000      # center-crop contexts longer than this (tokens)
+  max_new_tokens: 1024         # max tokens for each LLM call
+  temperature: 0.7             # training default (use 0.0 for fully greedy eval)
+  top_p: 0.95
+
+dataset:
+  adapter: hotpotqa
+  hf_config: distractor        # "distractor" (10 docs) — what MemAgent trained on
+  split: validation            # 7405 examples
+  # limit: 100                 # uncomment to cap for a quick smoke-test

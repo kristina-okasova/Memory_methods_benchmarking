@@ -1,0 +1,30 @@
+# ReMemR1 × NarrativeQA (books & movie scripts)
+#
+# Before running, start a SGLang server:
+#   python -m sglang.launch_server \
+#       --model-path yrshi/ReMemR1-7B \
+#       --served-model-name yrshi/ReMemR1-7B \
+#       --port 8000
+#
+# Then run:
+#   python benchmark.py --config configs/rememr1_narrativeqa.yaml
+
+model:
+  adapter: rememr1
+
+  model_name_or_path: yrshi/ReMemR1-7B
+
+  base_url: http://localhost:8000/v1
+  api_key: "123-abc"
+
+  chunk_size: 5000
+  max_context_len: 120000
+  max_new_tokens: 1024
+  temperature: 0.7
+  top_p: 0.95
+
+dataset:
+  adapter: narrativeqa
+  split: test
+  context_source: summary      # "summary" (~400 words) or "full_text" (raw HTML, very long)
+  # limit: 100
