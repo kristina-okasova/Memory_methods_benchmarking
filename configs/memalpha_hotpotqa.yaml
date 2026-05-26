@@ -1,0 +1,32 @@
+# Mem-alpha × HotpotQA benchmark config
+#
+# Direct mode (default) — only requires the local model; no memory_server.py needed:
+#   python benchmark.py --config configs/memalpha_hotpotqa.yaml
+#
+# Server mode — faster QA inference; requires two services running first:
+#   1. vllm serve YuWangX/Memalpha-4B --port 8001 --max-model-len 8192
+#   2. cd Mem-alpha && python memory_server.py \
+#          --server_url http://localhost:8001/v1 \
+#          --model_name YuWangX/Memalpha-4B --port 5005
+#   Then set mode: server below.
+
+model:
+  adapter: memalpha
+  mode: direct                    # direct | server
+
+  memalpha_repo_path: Mem-alpha   # path to cloned repo (relative to project root)
+
+  # Path to Mem-alpha agent YAML — controls model_name, vllm, enable_thinking, etc.
+  # Leave commented to use the minimal built-in defaults.
+  agent_config_path: Mem-alpha/config/memalpha-qwen3-4b_agent_0.05-0.1.yaml
+
+  chunk_size: 2000                # chars per context chunk fed to memory building
+
+  # server mode only — must match the port used when starting memory_server.py
+  memory_server_url: http://localhost:5005
+
+dataset:
+  adapter: hotpotqa
+  hf_config: distractor
+  split: validation
+  # limit: 100

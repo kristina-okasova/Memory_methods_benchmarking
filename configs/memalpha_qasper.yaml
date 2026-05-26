@@ -1,0 +1,18 @@
+# Mem-alpha × QASPER (information-seeking QA over NLP papers)
+#
+# Direct mode: python benchmark.py --config configs/memalpha_qasper.yaml
+# Server mode: set mode: server and start vLLM + memory_server.py first (see memalpha_hotpotqa.yaml)
+
+model:
+  adapter: memalpha
+  mode: direct
+
+  memalpha_repo_path: Mem-alpha
+  agent_config_path: Mem-alpha/config/memalpha-qwen3-4b_agent_0.05-0.1.yaml
+  chunk_size: 2000
+  memory_server_url: http://localhost:5005
+
+dataset:
+  adapter: qasper
+  split: validation
+  # limit: 50                  # caps number of papers (not QA pairs)

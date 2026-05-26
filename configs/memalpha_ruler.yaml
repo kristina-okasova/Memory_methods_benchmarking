@@ -1,0 +1,24 @@
+# Mem-alpha × RULER (synthetic long-context benchmark)
+#
+# Direct mode: python benchmark.py --config configs/memalpha_ruler.yaml
+# Server mode: set mode: server and start vLLM + memory_server.py first (see memalpha_hotpotqa.yaml)
+
+model:
+  adapter: memalpha
+  mode: direct
+
+  memalpha_repo_path: Mem-alpha
+  agent_config_path: Mem-alpha/config/memalpha-qwen3-4b_agent_0.05-0.1.yaml
+  chunk_size: 2000
+  memory_server_url: http://localhost:5005
+
+dataset:
+  adapter: ruler
+  context_length: 4096         # 4096 | 8192 | 16384
+  split: test
+  # tasks:
+  #   - niah_single_1
+  #   - niah_multikey_1
+  #   - vt
+  #   - qa_1
+  # limit: 100
