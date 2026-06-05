@@ -324,22 +324,37 @@ def main():
     parser = argparse.ArgumentParser(description="Model × dataset benchmark harness")
     parser.add_argument("--config",  required=True, help="Path to YAML config file")
     parser.add_argument("--limit",   type=int, default=None, help="Cap number of examples (for quick tests)")
-    parser.add_argument("--output",  default=None, help="Output JSONL path (default: results/<model>_<dataset>_<ts>.jsonl)")
+    parser.add_argument("--output",  default=None,
+                        help="Output JSONL path (default: results/<model>_<dataset>_<ts>.jsonl). "
+                             "Pass the same path as a previous run to resume it.")
     parser.add_argument("--workers", type=int, default=1,
                         help="Parallel example workers (default: 1). "
                              "Each worker gets its own adapter instance; the inference "
                              "server handles concurrent requests. Try 8–16 for server-mode models.")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume from the most recent output file for this model+dataset. "
+                             "Ignored if --output is explicitly specified.")
     args = parser.parse_args()
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
+    m = cfg["model"]["adapter"]
+    d = cfg["dataset"]["adapter"]
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
     if args.output:
         output_path = Path(args.output)
+    elif args.resume:
+        # Find the most recent matching output file in results/
+        candidates = sorted(Path("results").glob(f"{m}_{d}_*.jsonl"), reverse=True)
+        if candidates:
+            output_path = candidates[0]
+            log.info("Resuming from %s", output_path)
+        else:
+            log.warning("--resume specified but no previous file found for %s_%s; starting fresh.", m, d)
+            output_path = Path(f"results/{m}_{d}_{ts}.jsonl")
     else:
-        m = cfg["model"]["adapter"]
-        d = cfg["dataset"]["adapter"]
         output_path = Path(f"results/{m}_{d}_{ts}.jsonl")
 
     run(cfg, args.limit, output_path, workers=args.workers)

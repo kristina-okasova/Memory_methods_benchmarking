@@ -90,6 +90,11 @@ def main():
         help="Parallel example workers per dataset (default: 1). "
              "Try 8–16 for server-mode models (memalpha, rememr1).",
     )
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="Resume from the most recent results directory for this model. "
+             "Already-completed examples are skipped automatically.",
+    )
     args = parser.parse_args()
 
     with open(args.model_config) as f:
@@ -109,7 +114,27 @@ def main():
         sys.exit(1)
 
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    output_dir = Path(args.output_dir) if args.output_dir else Path(f"results/suite_{ts}")
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    elif args.resume:
+        # Find the most recent suite_* directory that contains a result file for this model
+        results_root = Path("results")
+        candidates = sorted(results_root.glob("suite_*"), reverse=True)
+        output_dir = None
+        for d in candidates:
+            if any(d.glob(f"{model_name}_*.jsonl")):
+                output_dir = d
+                break
+        if output_dir is None:
+            log.error(
+                "--resume specified but no previous results found for model '%s' "
+                "under results/suite_*/. Starting a fresh run.", model_name
+            )
+            output_dir = Path(f"results/suite_{ts}")
+        else:
+            log.info("Resuming from %s", output_dir)
+    else:
+        output_dir = Path(f"results/suite_{ts}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     all_metrics: Dict[str, dict] = {}
