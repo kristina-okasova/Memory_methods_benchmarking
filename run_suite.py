@@ -85,6 +85,11 @@ def main():
         "--output-dir", default=None,
         help="Directory for result files (default: results/suite_<timestamp>/)",
     )
+    parser.add_argument(
+        "--workers", type=int, default=1,
+        help="Parallel example workers per dataset (default: 1). "
+             "Try 8–16 for server-mode models (memalpha, rememr1).",
+    )
     args = parser.parse_args()
 
     with open(args.model_config) as f:
@@ -128,7 +133,7 @@ def main():
 
         output_path = output_dir / f"{model_name}_{dataset_name}.jsonl"
         try:
-            metrics = run(cfg, limit=None, output_path=output_path)
+            metrics = run(cfg, limit=None, output_path=output_path, workers=args.workers)
             all_metrics[dataset_name] = metrics
         except Exception as exc:
             log.error("Dataset %s failed: %s", dataset_name, exc, exc_info=True)

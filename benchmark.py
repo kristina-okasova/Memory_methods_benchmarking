@@ -16,11 +16,14 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from queue import Queue
 from typing import Any, Dict, Iterator, List, Optional
 
 import yaml
@@ -152,15 +155,21 @@ def _load_adapter(base_package: str, name: str):
 # Core runner
 # ---------------------------------------------------------------------------
 
-def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path) -> Dict[str, float]:
+def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
+        workers: int = 1) -> Dict[str, float]:
+    """Run a model against a dataset.
+
+    Parameters
+    ----------
+    workers:
+        Number of parallel example workers.  Each worker gets its own adapter
+        instance so there are no shared-state races.  The vLLM / SGLang server
+        handles concurrent requests via continuous batching, so the GPU stays
+        busy across all workers.  Recommended: 4–16 for server-mode adapters.
+    """
     # --- Load adapters ---
     model_name   = cfg["model"]["adapter"]   # e.g. "memagent"
     dataset_name = cfg["dataset"]["adapter"] # e.g. "hotpotqa"
-
-    log.info("Loading model adapter: %s", model_name)
-    ModelClass = _load_adapter("models", model_name)
-    model: ModelAdapter = ModelClass()
-    model.load(cfg["model"])
 
     log.info("Loading dataset adapter: %s", dataset_name)
     DatasetClass = _load_adapter("datasets_", dataset_name)
@@ -168,55 +177,125 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path) -> Dict[st
     if limit:
         cfg["dataset"]["limit"] = limit
     dataset.load(cfg["dataset"])
+    examples = list(dataset)   # materialise so workers can index freely
+    total = len(examples)
+    log.info("Dataset size: %d examples", total)
 
-    log.info("Dataset size: %d examples", len(dataset))
-
-    # --- Inference loop ---
-    results: List[Result] = []
+    # --- Resume: load already-completed results from an existing output file ---
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    results_map: Dict[int, Result] = {}   # index → result
 
-    with open(output_path, "w") as fout:
-        for i, example in enumerate(dataset):
-            ex_id    = example["id"]
-            context  = example.get("context", "")
-            question = example["question"]
-            gold     = example["answer"]
+    # Build id → index map for fast lookup
+    id_to_idx = {ex["id"]: i for i, ex in enumerate(examples)}
 
-            t0 = time.perf_counter()
-            error = None
-            prediction = ""
-            try:
-                prediction = model.predict(context, question)
-            except Exception as exc:
-                error = str(exc)
-                log.warning("Example %s failed: %s", ex_id, exc)
-            latency = time.perf_counter() - t0
+    if output_path.exists():
+        prior_lines = 0
+        with open(output_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                    ex_id = d["id"]
+                    if ex_id in id_to_idx:
+                        idx = id_to_idx[ex_id]
+                        results_map[idx] = Result(**{
+                            k: d[k] for k in Result.__dataclass_fields__
+                        })
+                        prior_lines += 1
+                except Exception:
+                    pass   # corrupt line — will be re-run
+        if prior_lines:
+            log.info("Resume: found %d already-completed results in %s — skipping them.",
+                     prior_lines, output_path)
 
-            r = Result(
-                id=ex_id,
-                question=question,
-                gold_answer=gold,
-                prediction=prediction,
-                exact_match=exact_match(prediction, gold) if not error else 0.0,
-                token_f1=token_f1(prediction, gold) if not error else 0.0,
-                latency_s=round(latency, 3),
-                error=error,
-            )
-            results.append(r)
-            fout.write(json.dumps(asdict(r)) + "\n")
-            fout.flush()
+    pending = [(i, ex) for i, ex in enumerate(examples) if i not in results_map]
+    log.info("%d examples remaining to process.", len(pending))
 
-            if (i + 1) % 10 == 0 or (i + 1) == len(dataset):
-                em_so_far = sum(r.exact_match for r in results) / len(results)
-                f1_so_far = sum(r.token_f1   for r in results) / len(results)
+    # --- Build a pool of adapter instances (one per worker) ---
+    actual_workers = min(workers, max(len(pending), 1))
+    log.info("Loading %d × model adapter: %s", actual_workers, model_name)
+    ModelClass = _load_adapter("models", model_name)
+    adapter_pool: Queue = Queue()
+    for _ in range(actual_workers):
+        m: ModelAdapter = ModelClass()
+        m.load(cfg["model"])
+        adapter_pool.put(m)
+
+    # --- Thread-safe helpers ---
+    write_lock   = threading.Lock()
+    counter_lock = threading.Lock()
+    completed    = [len(results_map)]   # start counter at already-done count
+
+    def process_one(idx: int, example: Dict[str, Any]) -> Result:
+        ex_id    = example["id"]
+        context  = example.get("context", "")
+        question = example["question"]
+        gold     = example["answer"]
+
+        adapter = adapter_pool.get()
+        t0 = time.perf_counter()
+        error = None
+        prediction = ""
+        try:
+            prediction = adapter.predict(context, question)
+        except Exception as exc:
+            error = str(exc)
+            log.warning("Example %s failed: %s", ex_id, exc)
+        finally:
+            adapter_pool.put(adapter)
+        latency = time.perf_counter() - t0
+
+        return Result(
+            id=ex_id,
+            question=question,
+            gold_answer=gold,
+            prediction=prediction,
+            exact_match=exact_match(prediction, gold) if not error else 0.0,
+            token_f1=token_f1(prediction, gold) if not error else 0.0,
+            latency_s=round(latency, 3),
+            error=error,
+        )
+
+    # --- Parallel inference (append to existing file) ---
+    with open(output_path, "a") as fout, \
+         ThreadPoolExecutor(max_workers=actual_workers) as executor:
+
+        future_to_idx = {
+            executor.submit(process_one, i, ex): i
+            for i, ex in pending
+        }
+
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            r = future.result()   # re-raises if process_one threw unexpectedly
+
+            with write_lock:
+                results_map[idx] = r
+                fout.write(json.dumps(asdict(r)) + "\n")
+                fout.flush()
+
+            with counter_lock:
+                completed[0] += 1
+                done = completed[0]
+
+            if done % 10 == 0 or done == total:
+                # Compute running metrics over whatever has finished so far
+                done_results = list(results_map.values())
+                em_so_far = sum(x.exact_match for x in done_results) / len(done_results)
+                f1_so_far = sum(x.token_f1   for x in done_results) / len(done_results)
                 log.info(
                     "[%d/%d]  EM=%.3f  F1=%.3f  last_latency=%.2fs",
-                    i + 1, len(dataset), em_so_far, f1_so_far, latency,
+                    done, total, em_so_far, f1_so_far, r.latency_s,
                 )
 
-    model.teardown()
+    # Teardown all adapter instances
+    while not adapter_pool.empty():
+        adapter_pool.get_nowait().teardown()
 
-    # --- Aggregate metrics ---
+    # --- Aggregate metrics (over all results in original order) ---
+    results = [results_map[i] for i in range(total)]
     n = len(results)
     metrics = {
         "n_examples":   n,
@@ -246,6 +325,10 @@ def main():
     parser.add_argument("--config",  required=True, help="Path to YAML config file")
     parser.add_argument("--limit",   type=int, default=None, help="Cap number of examples (for quick tests)")
     parser.add_argument("--output",  default=None, help="Output JSONL path (default: results/<model>_<dataset>_<ts>.jsonl)")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Parallel example workers (default: 1). "
+                             "Each worker gets its own adapter instance; the inference "
+                             "server handles concurrent requests. Try 8–16 for server-mode models.")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -259,7 +342,7 @@ def main():
         d = cfg["dataset"]["adapter"]
         output_path = Path(f"results/{m}_{d}_{ts}.jsonl")
 
-    run(cfg, args.limit, output_path)
+    run(cfg, args.limit, output_path, workers=args.workers)
 
 
 if __name__ == "__main__":
