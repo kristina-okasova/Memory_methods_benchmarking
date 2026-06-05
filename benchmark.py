@@ -72,7 +72,8 @@ class DatasetAdapter(ABC):
 
 
 # ---------------------------------------------------------------------------
-# Simple exact-match / F1 scorer (works for QA benchmarks like HotpotQA)
+# ---------------------------------------------------------------------------
+# Scorers
 # ---------------------------------------------------------------------------
 
 def _normalise(text: str) -> str:
@@ -107,6 +108,32 @@ def token_f1(prediction: str, gold) -> float:
     return best
 
 
+def rouge_l(prediction: str, gold) -> float:
+    """ROUGE-L F1 score — best match across gold answers.
+
+    Primary metric for NarrativeQA (long free-text answers).
+    Falls back to token_f1 if rouge_score is not installed.
+    """
+    golds = gold if isinstance(gold, list) else [gold]
+    try:
+        from rouge_score import rouge_scorer as rs_lib
+        scorer = rs_lib.RougeScorer(["rougeL"], use_stemmer=True)
+        best = 0.0
+        for g in golds:
+            score = scorer.score(g, prediction)
+            best = max(best, score["rougeL"].fmeasure)
+        return best
+    except ImportError:
+        log.warning("rouge_score not installed — falling back to token_f1 for ROUGE-L. "
+                    "Install with: pip install rouge-score")
+        return token_f1(prediction, gold)
+
+
+# Datasets that use ROUGE-L as their primary metric (long free-text answers).
+# EM and F1 are still computed for these, but ROUGE-L is the headline number.
+_ROUGE_L_DATASETS = {"narrativeqa"}
+
+
 # ---------------------------------------------------------------------------
 # Result data class
 # ---------------------------------------------------------------------------
@@ -119,6 +146,7 @@ class Result:
     prediction: str
     exact_match: float
     token_f1: float
+    rouge_l: float
     latency_s: float
     error: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -185,6 +213,8 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
     output_path.parent.mkdir(parents=True, exist_ok=True)
     results_map: Dict[int, Result] = {}   # index → result
 
+    use_rouge_l = dataset_name in _ROUGE_L_DATASETS
+
     # Build id → index map for fast lookup
     id_to_idx = {ex["id"]: i for i, ex in enumerate(examples)}
 
@@ -200,6 +230,9 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
                     ex_id = d["id"]
                     if ex_id in id_to_idx:
                         idx = id_to_idx[ex_id]
+                        # Backfill rouge_l for results saved before it was added
+                        if "rouge_l" not in d:
+                            d["rouge_l"] = 0.0
                         results_map[idx] = Result(**{
                             k: d[k] for k in Result.__dataclass_fields__
                         })
@@ -254,6 +287,7 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
             prediction=prediction,
             exact_match=exact_match(prediction, gold) if not error else 0.0,
             token_f1=token_f1(prediction, gold) if not error else 0.0,
+            rouge_l=rouge_l(prediction, gold) if not error else 0.0,
             latency_s=round(latency, 3),
             error=error,
         )
@@ -297,12 +331,15 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
     # --- Aggregate metrics (over all results in original order) ---
     results = [results_map[i] for i in range(total)]
     n = len(results)
+    primary_metric = "rouge_l" if use_rouge_l else "token_f1"
     metrics = {
-        "n_examples":   n,
-        "exact_match":  round(sum(r.exact_match for r in results) / n, 4),
-        "token_f1":     round(sum(r.token_f1   for r in results) / n, 4),
-        "avg_latency_s":round(sum(r.latency_s  for r in results) / n, 3),
-        "n_errors":     sum(1 for r in results if r.error),
+        "n_examples":    n,
+        "exact_match":   round(sum(r.exact_match for r in results) / n, 4),
+        "token_f1":      round(sum(r.token_f1    for r in results) / n, 4),
+        "rouge_l":       round(sum(r.rouge_l     for r in results) / n, 4),
+        "primary_metric": primary_metric,
+        "avg_latency_s": round(sum(r.latency_s   for r in results) / n, 3),
+        "n_errors":      sum(1 for r in results if r.error),
     }
     metrics_path = output_path.with_suffix(".metrics.json")
     with open(metrics_path, "w") as f:

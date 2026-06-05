@@ -169,17 +169,20 @@ def main():
     log.info("=" * 60)
     log.info("SUITE SUMMARY  (model=%s)", model_name)
     log.info("=" * 60)
-    header = f"{'dataset':<22}  {'n':>6}  {'EM':>7}  {'F1':>7}  {'errors':>7}"
+    header = f"{'dataset':<22}  {'n':>6}  {'EM':>7}  {'F1':>7}  {'ROUGE-L':>8}  {'primary':>8}  {'errors':>7}"
     log.info(header)
     log.info("-" * len(header))
     for ds, m in all_metrics.items():
         if "error" in m:
             log.info("%-22s  %s", ds, m["error"])
         else:
+            primary = m.get("primary_metric", "token_f1")
+            primary_val = m.get(primary, 0)
             log.info(
-                "%-22s  %6d  %7.3f  %7.3f  %7d",
+                "%-22s  %6d  %7.3f  %7.3f  %8.3f  %8.3f  %7d  ← %s",
                 ds, m.get("n_examples", 0), m.get("exact_match", 0),
-                m.get("token_f1", 0), m.get("n_errors", 0),
+                m.get("token_f1", 0), m.get("rouge_l", 0),
+                primary_val, m.get("n_errors", 0), primary,
             )
 
     summary_path = output_dir / "summary.json"
