@@ -1,0 +1,31 @@
+# δ-mem (declare-lab/delta-mem_qwen3_4b-instruct) × QASPER
+#
+# Note: the released δ-mem TSW adapter was itself trained on Qasper-derived
+# memory-writing data (8192-token write length), so this is the dataset it's
+# most "in distribution" for.
+#
+# δ-mem runs IN-PROCESS (no inference server) and needs its own venv:
+#   bash scripts/setup_deltamem_venv.sh
+#
+# Then run:
+#   .deltamem_venv/bin/python benchmark.py --config configs/deltamem_qasper.yaml --workers 1
+
+model:
+  adapter: deltamem
+
+  deltamem_repo_path: delta-Mem
+  base_model_path: Qwen/Qwen3-4B-Instruct-2507
+  adapter_path: declare-lab/delta-mem_qwen3_4b-instruct
+
+  device: cuda:0
+  dtype: bfloat16
+  attn_implementation: sdpa
+
+  max_new_tokens: 64             # Qasper answers are sometimes a short sentence, not just a span
+  do_sample: false
+  max_context_chars: 120000
+
+dataset:
+  adapter: qasper
+  split: validation
+  # limit: 50                    # caps number of papers (not QA pairs)

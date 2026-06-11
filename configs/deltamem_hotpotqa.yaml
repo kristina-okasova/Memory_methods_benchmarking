@@ -1,0 +1,31 @@
+# δ-mem (declare-lab/delta-mem_qwen3_4b-instruct) × HotpotQA
+#
+# δ-mem runs IN-PROCESS (no inference server) and needs its own venv:
+#   bash scripts/setup_deltamem_venv.sh
+#
+# Then run:
+#   .deltamem_venv/bin/python benchmark.py --config configs/deltamem_hotpotqa.yaml --workers 1
+#
+# (--workers 1: this adapter loads one full model copy per worker — there's no
+#  vLLM-style continuous batching to exploit with extra workers.)
+
+model:
+  adapter: deltamem
+
+  deltamem_repo_path: delta-Mem                          # cloned: git clone https://github.com/declare-lab/delta-Mem
+  base_model_path: Qwen/Qwen3-4B-Instruct-2507
+  adapter_path: declare-lab/delta-mem_qwen3_4b-instruct  # rank-8 TSW adapter, trained incl. on Qasper
+
+  device: cuda:0
+  dtype: bfloat16
+  attn_implementation: sdpa     # sdpa works out of the box; flash_attention_2 is faster if installed
+
+  max_new_tokens: 32             # short extractive span / yes-no, matches HOTPOTQA_PROMPT_TEMPLATE
+  do_sample: false               # greedy, matches the repo's "official decoding" eval mode
+  max_context_chars: 120000      # head+tail truncation if a context ever exceeds this
+
+dataset:
+  adapter: hotpotqa
+  hf_config: distractor          # "distractor" (10 docs) — what MemAgent/ReMemR1 trained on
+  split: validation               # 7405 examples
+  # limit: 100                    # uncomment for a quick smoke test

@@ -1,0 +1,40 @@
+# δ-mem (declare-lab/delta-mem_qwen3_4b-instruct) × NarrativeQA (books & movie scripts)
+#
+# NarrativeQA answers are long free-text — uses a free-form prompt (not the
+# "short span / yes-no" template) and is scored primarily with ROUGE-L
+# (see benchmark.py _ROUGE_L_DATASETS).
+#
+# δ-mem runs IN-PROCESS (no inference server) and needs its own venv:
+#   bash scripts/setup_deltamem_venv.sh
+#
+# Then run:
+#   .deltamem_venv/bin/python benchmark.py --config configs/deltamem_narrativeqa.yaml --workers 1
+
+model:
+  adapter: deltamem
+
+  deltamem_repo_path: delta-Mem
+  base_model_path: Qwen/Qwen3-4B-Instruct-2507
+  adapter_path: declare-lab/delta-mem_qwen3_4b-instruct
+
+  device: cuda:0
+  dtype: bfloat16
+  attn_implementation: sdpa
+
+  max_new_tokens: 128             # free-form answers are longer than extractive spans
+  do_sample: false
+  max_context_chars: 120000       # raise substantially if context_source: full_text (can be >300k chars)
+
+  prompt_template: |
+    Read the passage below and answer the question in your own words.
+
+    {context}
+
+    Question: {question}
+    Answer:
+
+dataset:
+  adapter: narrativeqa
+  split: test
+  context_source: summary         # "summary" (~400 words) or "full_text" (raw, can be >100k tokens)
+  # limit: 100

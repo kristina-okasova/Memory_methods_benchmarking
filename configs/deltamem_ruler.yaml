@@ -1,0 +1,34 @@
+# δ-mem (declare-lab/delta-mem_qwen3_4b-instruct) × RULER (synthetic long-context benchmark)
+#
+# δ-mem runs IN-PROCESS (no inference server) and needs its own venv:
+#   bash scripts/setup_deltamem_venv.sh
+#
+# Then run:
+#   .deltamem_venv/bin/python benchmark.py --config configs/deltamem_ruler.yaml --workers 1
+
+model:
+  adapter: deltamem
+
+  deltamem_repo_path: delta-Mem
+  base_model_path: Qwen/Qwen3-4B-Instruct-2507
+  adapter_path: declare-lab/delta-mem_qwen3_4b-instruct
+
+  device: cuda:0
+  dtype: bfloat16
+  attn_implementation: sdpa
+
+  max_new_tokens: 64              # some RULER tasks (e.g. variable tracking) need multiple values
+  do_sample: false
+  max_context_chars: 120000       # 4096-token contexts are well under this; raise if you bump
+                                   # context_length to 16384+ (~65k+ chars)
+
+dataset:
+  adapter: ruler
+  context_length: 4096            # 4096 | 8192 | 16384
+  split: test
+  # tasks:
+  #   - niah_single_1
+  #   - niah_multikey_1
+  #   - vt
+  #   - qa_1
+  # limit: 100

@@ -1,0 +1,28 @@
+# δ-mem (declare-lab/delta-mem_qwen3_4b-instruct) × 2WikiMultihopQA
+#
+# δ-mem runs IN-PROCESS (no inference server) and needs its own venv:
+#   bash scripts/setup_deltamem_venv.sh
+#
+# Then run:
+#   .deltamem_venv/bin/python benchmark.py --config configs/deltamem_wiki2multihop.yaml --workers 1
+
+model:
+  adapter: deltamem
+
+  deltamem_repo_path: delta-Mem
+  base_model_path: Qwen/Qwen3-4B-Instruct-2507
+  adapter_path: declare-lab/delta-mem_qwen3_4b-instruct
+
+  device: cuda:0
+  dtype: bfloat16
+  attn_implementation: sdpa
+
+  max_new_tokens: 32
+  do_sample: false
+  max_context_chars: 120000
+
+dataset:
+  adapter: wiki2multihop
+  split: validation
+  # type_filter: compositional
+  # limit: 100
