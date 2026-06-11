@@ -1,0 +1,29 @@
+# QwenLong-L1-32B × QASPER — long-context reasoning BASELINE (no memory mechanism)
+#
+# Before running, start a vLLM server (or set mode: local):
+#   vllm serve Tongyi-Zhiwen/QwenLong-L1-32B-AWQ \
+#       --quantization awq --max-model-len 32768 --port 8000
+#
+# python benchmark.py --config configs/qwenlong_qasper.yaml
+
+model:
+  adapter: qwenlong
+  mode: remote
+  model_name_or_path: Tongyi-Zhiwen/QwenLong-L1-32B-AWQ
+  base_url: http://localhost:8000/v1
+  api_key: "123-abc"
+
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.90
+  max_model_len: 32768
+  quantization: awq
+
+  max_context_len: 30000
+  max_new_tokens: 4096
+  temperature: 0.7
+  top_p: 0.95
+
+dataset:
+  adapter: qasper
+  split: validation            # ~281 papers → ~1000 QA pairs after exploding
+  # limit: 50                  # caps number of papers (not QA pairs)
