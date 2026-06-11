@@ -293,6 +293,9 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
         )
 
     # --- Parallel inference (append to existing file) ---
+    n_pending = len(pending)
+    t_batch_start = time.perf_counter()
+
     with open(output_path, "a") as fout, \
          ThreadPoolExecutor(max_workers=actual_workers) as executor:
 
@@ -319,10 +322,15 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
                 done_results = list(results_map.values())
                 em_so_far = sum(x.exact_match for x in done_results) / len(done_results)
                 f1_so_far = sum(x.token_f1   for x in done_results) / len(done_results)
+                elapsed = time.perf_counter() - t_batch_start
+                processed_so_far = done - (total - n_pending)
+                throughput_so_far = processed_so_far / elapsed if elapsed > 0 else 0.0
                 log.info(
-                    "[%d/%d]  EM=%.3f  F1=%.3f  last_latency=%.2fs",
-                    done, total, em_so_far, f1_so_far, r.latency_s,
+                    "[%d/%d]  EM=%.3f  F1=%.3f  last_latency=%.2fs  throughput=%.3f ex/s",
+                    done, total, em_so_far, f1_so_far, r.latency_s, throughput_so_far,
                 )
+
+    wall_time_s = time.perf_counter() - t_batch_start
 
     # Teardown all adapter instances
     while not adapter_pool.empty():
@@ -332,6 +340,20 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
     results = [results_map[i] for i in range(total)]
     n = len(results)
     primary_metric = "rouge_l" if use_rouge_l else "token_f1"
+
+    # Throughput / parallelism diagnostics for *this run's* newly-processed examples.
+    # - wall_time_s:        actual elapsed time for the parallel section
+    # - sum_latency_s:      sum of each example's individual predict() latency
+    # - speedup_factor:     sum_latency_s / wall_time_s — how much overlap the
+    #                        workers achieved. ~1.0 means no speedup (fully serial,
+    #                        e.g. GPU-bound in-process models like deltamem);
+    #                        ~N means near-linear scaling with N workers
+    #                        (e.g. server-batched adapters like memalpha/rememr1).
+    pending_results = [results_map[i] for i, _ in pending]
+    sum_latency_s = sum(r.latency_s for r in pending_results)
+    throughput_ex_per_s = round(n_pending / wall_time_s, 4) if n_pending and wall_time_s > 0 else None
+    speedup_factor = round(sum_latency_s / wall_time_s, 2) if n_pending and wall_time_s > 0 else None
+
     metrics = {
         "n_examples":    n,
         "exact_match":   round(sum(r.exact_match for r in results) / n, 4),
@@ -340,6 +362,11 @@ def run(cfg: Dict[str, Any], limit: Optional[int], output_path: Path,
         "primary_metric": primary_metric,
         "avg_latency_s": round(sum(r.latency_s   for r in results) / n, 3),
         "n_errors":      sum(1 for r in results if r.error),
+        "workers":              actual_workers,
+        "n_processed_this_run": n_pending,
+        "wall_time_s":          round(wall_time_s, 3),
+        "throughput_ex_per_s":  throughput_ex_per_s,
+        "speedup_factor":       speedup_factor,
     }
     metrics_path = output_path.with_suffix(".metrics.json")
     with open(metrics_path, "w") as f:
