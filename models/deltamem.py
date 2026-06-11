@@ -166,12 +166,22 @@ class DeltaMemAdapter:
         )
 
         tokenizer = AutoTokenizer.from_pretrained(base_model_path)
-        model = AutoModelForCausalLM.from_pretrained(
-            base_model_path,
-            dtype=get_dtype(dtype),
-            device_map={"": device},
-            attn_implementation=attn_implementation,
-        ).eval()
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                base_model_path,
+                dtype=get_dtype(dtype),
+                device_map={"": device},
+                attn_implementation=attn_implementation,
+            ).eval()
+        except torch.cuda.OutOfMemoryError as e:
+            raise RuntimeError(
+                "CUDA OOM while loading a δ-mem model copy onto "
+                f"{device}. Each --workers slot loads its own full model "
+                "copy (~8-9GB bf16 + KV cache for Qwen3-4B) — this adapter "
+                "does not share weights across workers. Try a lower "
+                "--workers value (1-3 is typical for a 4B model on a "
+                "shared GPU)."
+            ) from e
 
         delta_config = HFDeltaMemConfig.from_pretrained(adapter_dir)
         attach_delta_mem(model, delta_config)
