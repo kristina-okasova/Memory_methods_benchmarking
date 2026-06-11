@@ -1,0 +1,35 @@
+# MEM1 (MIT-MI/MEM1) × QASPER
+#
+# NOTE: this is an ADAPTATION — see configs/mem1_hotpotqa.yaml and
+# models/mem1.py for details. <search> is served by a per-example BM25 index
+# over `context`, not MEM1's original Wikipedia/FlashRAG retrieval server.
+# QASPER papers split into many more passages than HotpotQA/MuSiQue, so the
+# multi-turn search loop is more likely to actually be exercised here.
+#
+# Before running, start a vLLM server (or set mode: local):
+#   vllm serve Mem-Lab/Qwen2.5-7B-RL-RAG-Q2-EM-Release \
+#       --max-model-len 8192 --gpu-memory-utilization 0.6 --port 8000
+#
+# python benchmark.py --config configs/mem1_qasper.yaml
+
+model:
+  adapter: mem1
+  mode: remote
+  model_name_or_path: Mem-Lab/Qwen2.5-7B-RL-RAG-Q2-EM-Release
+  tokenizer_path: Qwen/Qwen2.5-7B
+  base_url: http://localhost:8000/v1
+
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.6
+  max_model_len: 8192
+
+  max_iterations: 6
+  top_k: 3
+  max_new_tokens: 1024
+  temperature: 0.01
+  top_p: 0.95
+
+dataset:
+  adapter: qasper
+  split: validation            # ~281 papers → ~1000 QA pairs after exploding
+  # limit: 50                  # caps number of papers (not QA pairs)

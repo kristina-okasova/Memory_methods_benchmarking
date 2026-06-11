@@ -1,0 +1,46 @@
+# MEM1 (MIT-MI/MEM1) × RULER (synthetic long-context "needle in haystack")
+#
+# NOTE: this is an ADAPTATION — see configs/mem1_hotpotqa.yaml and
+# models/mem1.py for details. <search> is served by a per-example BM25 index
+# over `context`, not MEM1's original Wikipedia/FlashRAG retrieval server.
+#
+# RULER contexts have no "Document N:" markers, so models/mem1.py falls back
+# to paragraph-based passages — for haystack tasks this can mean hundreds of
+# near-duplicate "filler" passages plus the needle(s). BM25 should still
+# usually surface the needle if the query mentions its distinguishing terms,
+# but this is the least faithful adaptation of the bunch (worth sanity-checking
+# a handful of transcripts before trusting the numbers).
+#
+# Before running, start a vLLM server (or set mode: local):
+#   vllm serve Mem-Lab/Qwen2.5-7B-RL-RAG-Q2-EM-Release \
+#       --max-model-len 8192 --gpu-memory-utilization 0.6 --port 8000
+#
+# python benchmark.py --config configs/mem1_ruler.yaml
+
+model:
+  adapter: mem1
+  mode: remote
+  model_name_or_path: Mem-Lab/Qwen2.5-7B-RL-RAG-Q2-EM-Release
+  tokenizer_path: Qwen/Qwen2.5-7B
+  base_url: http://localhost:8000/v1
+
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.6
+  max_model_len: 8192
+
+  max_iterations: 6
+  top_k: 3
+  max_new_tokens: 1024
+  temperature: 0.01
+  top_p: 0.95
+
+dataset:
+  adapter: ruler
+  context_length: 4096         # 4096 | 8192 | 16384
+  split: test                  # only available split
+  # tasks:                     # null = all tasks; or list a subset:
+  #   - niah_single_1
+  #   - niah_multikey_1
+  #   - vt
+  #   - qa_1
+  # limit: 100

@@ -1,0 +1,38 @@
+# MEM1 (MIT-MI/MEM1) × NarrativeQA
+#
+# NOTE: this is an ADAPTATION — see configs/mem1_hotpotqa.yaml and
+# models/mem1.py for details. <search> is served by a per-example BM25 index
+# over `context`, not MEM1's original Wikipedia/FlashRAG retrieval server.
+#
+# NarrativeQA answers are short free-text and are scored primarily with
+# ROUGE-L (see benchmark.py _ROUGE_L_DATASETS). MEM1's <answer>...</answer>
+# extraction works fine for these.
+#
+# Before running, start a vLLM server (or set mode: local):
+#   vllm serve Mem-Lab/Qwen2.5-7B-RL-RAG-Q2-EM-Release \
+#       --max-model-len 8192 --gpu-memory-utilization 0.6 --port 8000
+#
+# python benchmark.py --config configs/mem1_narrativeqa.yaml
+
+model:
+  adapter: mem1
+  mode: remote
+  model_name_or_path: Mem-Lab/Qwen2.5-7B-RL-RAG-Q2-EM-Release
+  tokenizer_path: Qwen/Qwen2.5-7B
+  base_url: http://localhost:8000/v1
+
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.6
+  max_model_len: 8192
+
+  max_iterations: 6
+  top_k: 3
+  max_new_tokens: 1024
+  temperature: 0.01
+  top_p: 0.95
+
+dataset:
+  adapter: narrativeqa
+  split: test                  # 10557 examples
+  context_source: summary      # "summary" (~400 words) or "full_text" (raw, can be >100k chars)
+  # limit: 100
