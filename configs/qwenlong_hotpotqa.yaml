@@ -30,8 +30,8 @@ model:
   quantization: awq           # set to null/omit when using the bf16 checkpoint
 
   # ---- inference parameters (match official eval: temperature 0.7, top_p 0.95) ----
-  max_context_len: 30000      # center-crop contexts longer than this (tokens)
-  max_new_tokens: 4096        # generation budget — model "thinks" before answering
+  max_context_len: 16000      # center-crop contexts longer than this (tokens) — lowered from 30000 for runtime
+  max_new_tokens: 2048        # generation budget — model "thinks" before answering — lowered from 4096 for runtime
   temperature: 0.7
   top_p: 0.95
 

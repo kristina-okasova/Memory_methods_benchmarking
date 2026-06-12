@@ -22,8 +22,8 @@ model:
   max_model_len: 32768
   quantization: awq
 
-  max_context_len: 30000
-  max_new_tokens: 4096
+  max_context_len: 16000      # lowered from 30000 for runtime
+  max_new_tokens: 2048        # lowered from 4096 for runtime
   temperature: 0.7
   top_p: 0.95
 

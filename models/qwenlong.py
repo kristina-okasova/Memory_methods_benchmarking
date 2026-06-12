@@ -46,9 +46,15 @@ Config keys (all under cfg["model"]):
     #   factor: 4.0
     #   original_max_position_embeddings: 32768
     # ---- inference parameters (match official eval: temperature 0.7, top_p 0.95) ----
-    max_context_len:      30000    # max INPUT tokens; center-crop if longer
-    max_new_tokens:       4096     # generation budget — the model "thinks" before
+    max_context_len:      16000    # max INPUT tokens; center-crop if longer
+                                    # (default lowered from the official 30000 to keep
+                                    # per-example prefill time manageable on a single H100)
+    max_new_tokens:       2048     # generation budget — the model "thinks" before
                                     # answering, so this is the main cost/runtime knob
+                                    # (default lowered from the official 4096; risks
+                                    # truncating <think> before "Therefore, the answer
+                                    # is..." on the hardest examples — _extract_answer
+                                    # falls back to the raw text in that case)
     temperature:          0.7
     top_p:                0.95
 """
@@ -134,7 +140,7 @@ class QwenLongAdapter:
         No chunking or memory loop — QwenLong-L1's RL training relies on its
         extended context window to read the whole document at once.
         """
-        max_ctx = self._cfg.get("max_context_len", 30000)
+        max_ctx = self._cfg.get("max_context_len", 16000)
 
         # Center-crop the context if it exceeds the configured token budget
         # (same strategy as memagent/rememr1's truncation='center').
@@ -164,7 +170,7 @@ class QwenLongAdapter:
     # ------------------------------------------------------------------
 
     def _call_llm(self, user_content: str) -> str:
-        max_tokens = self._cfg.get("max_new_tokens", 4096)
+        max_tokens = self._cfg.get("max_new_tokens", 2048)
         temperature = self._cfg.get("temperature", 0.7)
         top_p = self._cfg.get("top_p", 0.95)
         model = self._cfg.get("model_name_or_path", "Tongyi-Zhiwen/QwenLong-L1-32B-AWQ")
